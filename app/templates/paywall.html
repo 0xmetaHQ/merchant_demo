@@ -354,6 +354,122 @@ endblock %} {% block styles %}
 <!-- Load Web3.js -->
 <script src="https://cdn.jsdelivr.net/npm/web3@1.10.0/dist/web3.min.js"></script>
 
+<!-- Settlement Status Polling Script -->
+<script>
+  /**
+   * Poll settlement status until it's confirmed on-chain
+   */
+  async function pollSettlementStatus(
+    settlementId,
+    maxAttempts = 20,
+    interval = 3000
+  ) {
+    console.log(`🔍 Starting settlement status polling for ${settlementId}`);
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const response = await fetch(
+          `https://facilitator.0xmeta.ai/v1/settlements/${settlementId}/status`,
+          { headers: { "Content-Type": "application/json" } }
+        );
+
+        if (!response.ok) {
+          console.warn(
+            `Attempt ${attempt}/${maxAttempts}: Failed to fetch status`
+          );
+          await sleep(interval);
+          continue;
+        }
+
+        const status = await response.json();
+        console.log(
+          `Attempt ${attempt}/${maxAttempts}: Status =`,
+          status.status
+        );
+
+        if (status.status === "settled" && status.transaction_hash) {
+          console.log("✅ Settlement confirmed on-chain!");
+          updateSettlementStatus(status);
+          return { success: true, status: status, attempts: attempt };
+        }
+
+        if (status.status === "failed") {
+          console.error("❌ Settlement failed");
+          return { success: false, status: status, attempts: attempt };
+        }
+
+        await sleep(interval);
+      } catch (error) {
+        console.error(`Attempt ${attempt}/${maxAttempts}: Error`, error);
+        await sleep(interval);
+      }
+    }
+
+    console.warn("⚠️  Polling timeout");
+    return { success: false, timeout: true, attempts: maxAttempts };
+  }
+
+  function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  function updateSettlementStatus(status) {
+    const settlementViewer = document.getElementById("settleJsonViewer");
+    if (settlementViewer && status) {
+      const updatedData = {
+        settlement_id: status.id,
+        status: "settled",
+        settlement_tx_hash: status.transaction_hash,
+        settled_at: status.details?.settled_at || new Date().toISOString(),
+        details: {
+          ...status.details,
+          confirmed_on_chain: true,
+        },
+      };
+
+      const highlighted = syntaxHighlight(updatedData);
+      settlementViewer.innerHTML = `<pre>${highlighted}</pre>`;
+
+      const badge = document.querySelector(".status-settled");
+      if (badge) {
+        badge.style.background = "#d4edda";
+        badge.style.color = "#155724";
+        badge.innerHTML = "<span>✓</span><span>Confirmed On-Chain</span>";
+      }
+    }
+  }
+
+  function syntaxHighlight(json) {
+    if (typeof json !== "string") {
+      json = JSON.stringify(json, null, 2);
+    }
+    json = json
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+    return json.replace(
+      /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,
+      function (match) {
+        let cls = "json-number";
+        if (/^"/.test(match)) {
+          if (/:$/.test(match)) {
+            cls = "json-key";
+          } else {
+            cls = "json-string";
+          }
+        } else if (/true|false/.test(match)) {
+          cls = "json-boolean";
+        } else if (/null/.test(match)) {
+          cls = "json-null";
+        }
+        return '<span class="' + cls + '">' + match + "</span>";
+      }
+    );
+  }
+
+  window.pollSettlementStatus = pollSettlementStatus;
+</script>
+
 <!-- Load our app.js which handles payment logic -->
 <script src="/static/js/app.js"></script>
 {% endblock %}

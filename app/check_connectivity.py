@@ -26,7 +26,7 @@ RPC_ENDPOINTS = {
 }
 
 USDC_ADDRESS = "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
-FACILITATOR_URL = os.getenv("FACILITATOR_BASE_URL", "http://localhost:8000")
+FACILITATOR_URL = os.getenv("FACILITATOR_BASE_URL")
 
 
 def test_rpc_connection(rpc_url: str, timeout: int = 10) -> tuple[bool, str]:
@@ -145,7 +145,7 @@ async def main():
     if working_rpc:
         print("   1. Start facilitator: cd facilitator && python -m app.main")
         print("   2. Start merchant demo: cd merchant_demo && python -m app.main")
-        print("   3. Visit: http://localhost:8080")
+        print("   3. Visit: https://facilitator.0xmeta.ai")
     else:
         print("   1. Check internet connection")
         print("   2. Try custom RPC endpoint (set in .env):")

@@ -1,30 +1,4 @@
-# ============================================================================
-# FILE: .env (Updated)
-# ============================================================================
-"""
-# Facilitator API base URL
-FACILITATOR_BASE_URL=http://localhost:8000
 
-# Your merchant wallet address (where you receive payments)
-MERCHANT_PAYOUT_WALLET=0xa821f428ef8cc9f54a9915336a82220853059090
-
-# USDC contract address - Base Sepolia for testing
-USDC_TOKEN_ADDRESS=0x036CbD53842c5426634e7929541eC2318f3dCF7e
-
-# Blockchain network - use 'base-sepolia' for testing
-CHAIN=base-sepolia
-
-# Price for accessing /photos endpoint in USDC wei (0.01 USDC)
-PRICE_IN_USDC=10000
-
-# Auto-settle payments after verification
-AUTO_SETTLE=true
-"""
-
-
-# ============================================================================
-# FILE: app/config.py (Updated - Removed API Key requirement)
-# ============================================================================
 """
 Configuration for merchant demo app.
 """
@@ -39,8 +13,7 @@ class Settings:
     
     # Facilitator API base URL
     FACILITATOR_BASE_URL = os.getenv(
-        "FACILITATOR_BASE_URL",
-        "http://localhost:8000"
+        "FACILITATOR_BASE_URL"
     )
     
     # Construct endpoint URLs
@@ -118,7 +91,7 @@ from typing import Dict, Any, Optional
 import httpx
 
 logger = logging.getLogger(__name__)
-FACILITATOR_BASE = os.getenv("FACILITATOR_BASE_URL", "http://localhost:8000").rstrip("/")
+FACILITATOR_BASE = os.getenv("FACILITATOR_BASE_URL").rstrip("/")
 
 
 class FacilitatorClient:

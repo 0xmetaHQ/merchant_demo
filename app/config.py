@@ -20,8 +20,7 @@ class Settings:
     
     # Facilitator API base URL
     FACILITATOR_BASE_URL = os.getenv(
-        "FACILITATOR_BASE_URL",
-        "http://localhost:8000"
+        "FACILITATOR_BASE_URL"
     )
     
     # Construct endpoint URLs

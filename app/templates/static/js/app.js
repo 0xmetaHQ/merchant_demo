@@ -457,7 +457,7 @@ async function makePayment() {
       expected_token: CONFIG.usdc_address,
       metadata: {
         source: "x402_merchant_demo",
-        resource: "http://localhost:8080/photos",
+        resource: "https://merchant-demo-six.vercel.app/photos",
         paymentPayload: {
           x402Version: 1,
           scheme: "exact",
@@ -544,6 +544,13 @@ async function makePayment() {
     // STEP 4: Success! Display JSON responses
     // ========================================================================
 
+    // Find the success handling section in makePayment() function
+    // Replace the success section (around line 550-580) with this:
+
+    // ========================================================================
+    // STEP 4: Success! Display JSON responses
+    // ========================================================================
+
     console.log("✅ Payment flow complete!");
     console.log("Verification:", verifyData);
     console.log("Settlement:", settleData);
@@ -551,13 +558,67 @@ async function makePayment() {
     // Call the new display function from paywall.html
     if (typeof window.showPaymentSuccess === "function") {
       window.showPaymentSuccess(verifyData, settleData);
+
+      // ✅ NEW: Start polling settlement status
+      if (settleData.settlement_id && settleData.status === "pending") {
+        console.log("⏳ Settlement is pending, starting status polling...");
+
+        // Show status indicator
+        updateStatus(
+          "⏳ Waiting for on-chain confirmation...<br/>" +
+            "<small>This usually takes 10-30 seconds</small>",
+          "info"
+        );
+
+        // Poll for status updates
+        if (typeof window.pollSettlementStatus === "function") {
+          window
+            .pollSettlementStatus(settleData.settlement_id, 20, 3000)
+            .then((result) => {
+              if (result.success) {
+                console.log(
+                  `✅ Settlement confirmed after ${result.attempts} attempts`
+                );
+                updateStatus(
+                  "✅ Settlement confirmed on-chain!<br/>" +
+                    `<small>Transaction: ${result.status.transaction_hash}</small>`,
+                  "success"
+                );
+              } else if (result.timeout) {
+                console.warn("⚠️  Status polling timed out");
+                updateStatus(
+                  "⚠️  Settlement is taking longer than expected<br/>" +
+                    "<small>You can check status later or refresh the page</small>",
+                  "warning"
+                );
+              } else {
+                console.error("❌ Settlement failed");
+                updateStatus(
+                  "❌ Settlement failed<br/>" +
+                    "<small>Please contact support</small>",
+                  "danger"
+                );
+              }
+            })
+            .catch((err) => {
+              console.error("Status polling error:", err);
+            });
+        }
+      } else if (settleData.settlement_tx_hash) {
+        // Already confirmed
+        updateStatus(
+          "✅ Settlement confirmed on-chain!<br/>" +
+            `<small>Transaction: ${settleData.settlement_tx_hash}</small>`,
+          "success"
+        );
+      }
     } else {
       // Fallback to old success display
       updateStatus(
         `✅ Payment complete!<br/>` +
           `<small>Settlement ID: ${settleData.settlement_id}</small><br/>` +
           `<small>Merchant received: ${CONFIG.price_usdc} USDC</small><br/>` +
-          `<small>Fee collected: $${OXMETA_FEE_USDC} (atomic)</small>`,
+          `<small>Fee collected: ${OXMETA_FEE_USDC} (atomic)</small>`,
         "success"
       );
 
@@ -576,6 +637,7 @@ async function makePayment() {
     } catch (e) {
       console.warn("Session storage failed:", e);
     }
+
     // ============================================================================
     // EVENT LISTENERS
     // ============================================================================
@@ -726,6 +788,161 @@ function preloadImages(photoUrls) {
   }
   console.log(`🖼️ Preloading ${photoUrls.length} images...`);
 }
+
+// Add this to your app.js after the settlement response
+
+/**
+ * Poll settlement status until it's confirmed on-chain
+ * This is needed because 1Shot processes transactions asynchronously
+ */
+async function pollSettlementStatus(
+  settlementId,
+  maxAttempts = 20,
+  interval = 3000
+) {
+  console.log(`🔍 Starting settlement status polling for ${settlementId}`);
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const response = await fetch(
+        `http://localhost:8000/v1/settlements/${settlementId}/status`,
+        {
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+
+      if (!response.ok) {
+        console.warn(
+          `Attempt ${attempt}/${maxAttempts}: Failed to fetch status`
+        );
+        await sleep(interval);
+        continue;
+      }
+
+      const status = await response.json();
+      console.log(`Attempt ${attempt}/${maxAttempts}: Status =`, status.status);
+
+      // Check if settled
+      if (status.status === "settled" && status.transaction_hash) {
+        console.log("✅ Settlement confirmed on-chain!");
+        console.log("Transaction hash:", status.transaction_hash);
+
+        // Update UI with transaction hash
+        updateSettlementStatus(status);
+
+        return {
+          success: true,
+          status: status,
+          attempts: attempt,
+        };
+      }
+
+      // Check if failed
+      if (status.status === "failed") {
+        console.error("❌ Settlement failed");
+        return {
+          success: false,
+          status: status,
+          attempts: attempt,
+        };
+      }
+
+      // Still pending, wait and try again
+      await sleep(interval);
+    } catch (error) {
+      console.error(`Attempt ${attempt}/${maxAttempts}: Error`, error);
+      await sleep(interval);
+    }
+  }
+
+  console.warn("⚠️  Polling timeout - settlement still pending");
+  return {
+    success: false,
+    timeout: true,
+    attempts: maxAttempts,
+  };
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function updateSettlementStatus(status) {
+  // Update the settlement response JSON viewer
+  if (typeof window.showPaymentSuccess === "function") {
+    const settlementViewer = document.getElementById("settleJsonViewer");
+    if (settlementViewer && status) {
+      // Get current verification data
+      const verifyResponse = sessionStorage.getItem("verifyResponse");
+      const verifyData = verifyResponse ? JSON.parse(verifyResponse) : null;
+
+      // Update settlement data with new status
+      const updatedSettleData = {
+        ...status,
+        status: status.status || "settled",
+        settlement_tx_hash:
+          status.transaction_hash || status.settlement_tx_hash,
+        details: {
+          ...(status.details || {}),
+          confirmed_on_chain: true,
+          block_number: status.details?.blockNumber,
+          gas_used: status.details?.gasUsed,
+        },
+      };
+
+      // Re-display with updated data
+      const highlighted = syntaxHighlight(updatedSettleData);
+      settlementViewer.innerHTML = `<pre>${highlighted}</pre>`;
+
+      // Show success message
+      const badge = document.querySelector(".status-settled");
+      if (badge) {
+        badge.style.background = "#d4edda";
+        badge.style.color = "#155724";
+        badge.innerHTML =
+          "<span>✓</span><span>Settlement Confirmed On-Chain</span>";
+      }
+
+      // Store updated data
+      sessionStorage.setItem(
+        "settleResponse",
+        JSON.stringify(updatedSettleData)
+      );
+    }
+  }
+}
+
+// Syntax highlighting helper (needed for updateSettlementStatus)
+function syntaxHighlight(json) {
+  if (typeof json !== "string") {
+    json = JSON.stringify(json, null, 2);
+  }
+  json = json
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  return json.replace(
+    /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,
+    function (match) {
+      let cls = "json-number";
+      if (/^"/.test(match)) {
+        if (/:$/.test(match)) {
+          cls = "json-key";
+        } else {
+          cls = "json-string";
+        }
+      } else if (/true|false/.test(match)) {
+        cls = "json-boolean";
+      } else if (/null/.test(match)) {
+        cls = "json-null";
+      }
+      return '<span class="' + cls + '">' + match + "</span>";
+    }
+  );
+}
+
+// Export for use in app.js
+window.pollSettlementStatus = pollSettlementStatus;
 
 // ============================================================================
 // EXPOSE TO GLOBAL SCOPE

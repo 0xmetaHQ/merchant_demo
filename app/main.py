@@ -132,7 +132,7 @@ async def startup_event():
                         print(f"\n   Get testnet ETH from:")
                         print(f"   🚰 https://www.coinbase.com/faucets/base-ethereum-sepolia-faucet")
                         print(f"   🚰 https://basescan.org/faucet (requires mainnet ETH)")
-                        print(f"\n   Then restart the app or visit http://localhost:8080/admin")
+                        print(f"\n   Then restart the app or visit https://merchant-demo-six.vercel.app/admin")
                     
                     print(f"\n⚠️  WARNING: Settlement fee collection will FAIL!")
                     print(f"\n📋 After getting ETH, run:")
@@ -153,7 +153,7 @@ async def startup_event():
         print(f"   3. Try again in a few moments (RPC might be rate limiting)")
         print(f"   4. Manually check approval: python -m app.merchant_approval --network {settings.CHAIN} --check-only")
         print(f"\n   App will continue to run, but approval status is unknown.")
-        print(f"   You can setup approval manually via: http://localhost:8080/admin")
+        print(f"   You can setup approval manually via: https://merchant-demo-six.vercel.app/admin")
         print("="*80 + "\n")
 
 
@@ -276,7 +276,7 @@ async def get_photos(
             payment_asset=settings.USDC_TOKEN_ADDRESS,
             asset_name="USDC",
             max_amount_required=str(settings.PRICE_IN_USDC),
-            resource="http://localhost:8080/photos",
+            resource="https://merchant-demo-six.vercel.app/photos",
             resource_description="Pay in crypto for premium access to photos"
         )
     )

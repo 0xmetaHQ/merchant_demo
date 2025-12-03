@@ -40,7 +40,7 @@ class X402PaymentVerifier:
         resource: str,
         resource_description: str,
         eip712_version: str = "2",
-        facilitator_base_url: str = "http://localhost:8000",
+        facilitator_base_url: str = "https://facilitator.0xmeta.ai",
     ):
         self.payment_requirements = PaymentRequirements(
             scheme="exact",
