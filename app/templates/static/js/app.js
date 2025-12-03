@@ -482,13 +482,16 @@ async function makePayment() {
       verifyPayload.metadata.payment_breakdown
     );
 
-    const verifyResponse = await fetch("http://localhost:8000/v1/verify", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(verifyPayload),
-    });
+    const verifyResponse = await fetch(
+      "https://facilitator.0xmeta.ai/v1/verify",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(verifyPayload),
+      }
+    );
 
     if (!verifyResponse.ok) {
       const errorData = await verifyResponse.json();
@@ -520,13 +523,16 @@ async function makePayment() {
 
     console.log("📦 Sending settlement request to 0xmeta...");
 
-    const settleResponse = await fetch("http://localhost:8000/v1/settle", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(settlePayload),
-    });
+    const settleResponse = await fetch(
+      "https://facilitator.0xmeta.ai/v1/settle",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(settlePayload),
+      }
+    );
 
     if (!settleResponse.ok) {
       const errorData = await settleResponse.json();
@@ -805,7 +811,7 @@ async function pollSettlementStatus(
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       const response = await fetch(
-        `http://localhost:8000/v1/settlements/${settlementId}/status`,
+        `https://facilitator.0xmeta.ai/v1/settlements/${settlementId}/status`,
         {
           headers: { "Content-Type": "application/json" },
         }
