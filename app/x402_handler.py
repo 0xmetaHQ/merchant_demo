@@ -2,6 +2,7 @@ import base64
 import json
 import logging
 from typing import Tuple, Optional
+import httpx
 
 from fastapi import HTTPException, Request
 from pydantic import BaseModel
@@ -26,11 +27,7 @@ class X402PaymentVerifier:
     """
     FastAPI dependency for X402 payment verification.
     
-    Usage:
-        Depends(X402PaymentVerifier(...))
-    
-    Returns:
-        tuple (settled: bool, requirements: PaymentRequirements)
+    ✅ UPDATED: No longer checks merchant approval (not needed for atomic settlement)
     """
 
     def __init__(
@@ -43,6 +40,7 @@ class X402PaymentVerifier:
         resource: str,
         resource_description: str,
         eip712_version: str = "2",
+        facilitator_base_url: str = "http://localhost:8000",
     ):
         self.payment_requirements = PaymentRequirements(
             scheme="exact",
@@ -54,11 +52,14 @@ class X402PaymentVerifier:
             asset=payment_asset,
             extra={"name": asset_name, "version": eip712_version},
         )
+        self.facilitator_base_url = facilitator_base_url
         self.logger = logger
 
     async def __call__(self, request: Request) -> Tuple[bool, PaymentRequirements]:
         """
         Check for payment headers and verify/settle if present.
+        
+        ✅ UPDATED: Removed approval checking logic (not needed for atomic settlement)
         
         Returns:
             (False, requirements) - No payment, show paywall
@@ -143,7 +144,7 @@ class X402PaymentVerifier:
         # Build verification request
         verify_payload = {
             "transaction_hash": tx_hash.lower(),
-            "chain": self.payment_requirements.network,  # "base-sepolia"
+            "chain": self.payment_requirements.network,
             "seller_address": self.payment_requirements.payTo.lower(),
             "expected_amount": self.payment_requirements.maxAmountRequired,
             "expected_token": self.payment_requirements.asset.lower(),
@@ -165,9 +166,8 @@ class X402PaymentVerifier:
                 self.logger.warning("Could not extract payer: %s", e)
 
         self.logger.info(
-            "Calling facilitator verify: chain=%s, network=%s",
-            verify_payload["chain"],
-            payment_payload_obj.get("network") if payment_payload_obj else "N/A"
+            "Calling facilitator verify: chain=%s",
+            verify_payload["chain"]
         )
 
         # Call facilitator verify
@@ -224,5 +224,5 @@ class X402PaymentVerifier:
                 },
             )
 
-        self.logger.info("✅ Payment successfully verified and settled")
+        self.logger.info("✅ Payment successfully verified and settled via atomic split")
         return True, self.payment_requirements

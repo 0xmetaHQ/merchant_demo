@@ -1,7 +1,77 @@
 {% extends "base.html" %} {% block title %}Payment Required - x402 Demo{%
-endblock %} {% block content %}
+endblock %} {% block styles %}
+<style>
+  /* JSON Response Viewer Styles */
+  .json-viewer {
+    background: #1e1e1e;
+    color: #d4d4d4;
+    padding: 1.5rem;
+    border-radius: 8px;
+    font-family: "Courier New", monospace;
+    font-size: 0.9rem;
+    overflow-x: auto;
+    max-height: 600px;
+    overflow-y: auto;
+  }
+
+  .json-viewer pre {
+    margin: 0;
+    color: #d4d4d4;
+  }
+
+  .json-key {
+    color: #9cdcfe;
+  }
+
+  .json-string {
+    color: #ce9178;
+  }
+
+  .json-number {
+    color: #b5cea8;
+  }
+
+  .json-boolean {
+    color: #569cd6;
+  }
+
+  .json-null {
+    color: #808080;
+  }
+
+  .response-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+  }
+
+  .copy-btn {
+    font-size: 0.85rem;
+  }
+
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-weight: 600;
+  }
+
+  .status-verified {
+    background: #d4edda;
+    color: #155724;
+  }
+
+  .status-settled {
+    background: #cce5ff;
+    color: #004085;
+  }
+</style>
+{% endblock %} {% block content %}
 <div class="row justify-content-center my-5">
-  <div class="col-12 col-md-8 col-lg-6">
+  <div class="col-12 col-md-10 col-lg-8">
     <div class="card shadow-lg border-0">
       <div class="card-header bg-gradient-primary text-black py-4">
         <div class="d-flex align-items-center">
@@ -16,90 +86,274 @@ endblock %} {% block content %}
       </div>
 
       <div class="card-body p-4">
-        <!-- Network & Amount Info -->
-        <div class="row g-3 mb-3">
-          <div class="col-6">
-            <div class="border rounded p-3 text-center">
-              <small class="text-muted">Amount</small>
-              <div class="fw-bold">{{ amount }} USDC</div>
-            </div>
-          </div>
-          <div class="col-6">
-            <div class="border rounded p-3 text-center">
-              <small class="text-muted">Network</small>
-              <div class="fw-bold" id="networkDisplay">
-                {{ network_info.chain|upper|replace("-", " ") }}
+        <!-- Payment Section -->
+        <div id="paymentFlow">
+          <!-- Price Breakdown -->
+          <div class="alert alert-info mb-4">
+            <div class="row g-2">
+              <div class="col-12">
+                <div class="d-flex justify-content-between">
+                  <span>Content Price:</span>
+                  <strong>{{ amount }} USDC</strong>
+                </div>
+              </div>
+              <div class="col-12">
+                <div class="d-flex justify-content-between text-muted small">
+                  <span>+ Facilitator Fee:</span>
+                  <span>$0.01 USDC</span>
+                </div>
+              </div>
+              <div class="col-12">
+                <hr class="my-2" />
+              </div>
+              <div class="col-12">
+                <div class="d-flex justify-content-between">
+                  <strong>Total Amount:</strong>
+                  <strong class="text-primary"
+                    >{{ (amount | float + 0.01) | round(2) }} USDC</strong
+                  >
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        <!-- Wallet Connection Section -->
-        <div id="walletSection" class="mb-3">
-          <div class="d-grid">
-            <button id="connectBtn" class="btn btn-warning btn-lg">
-              🔌 Connect MetaMask
-            </button>
-          </div>
-        </div>
-
-        <!-- Payment Section (Hidden Initially) -->
-        <div id="paymentSection" style="display: none" class="mb-3">
-          <div class="wallet-connected mb-3 p-3 bg-light rounded">
-            <div class="d-flex justify-content-between align-items-center">
-              <div>
-                <small class="text-muted">Connected Wallet</small>
-                <div id="walletAddress" class="fw-bold"></div>
+          <!-- Network Info -->
+          <div class="row g-3 mb-3">
+            <div class="col-6">
+              <div class="border rounded p-3 text-center">
+                <small class="text-muted">Network</small>
+                <div class="fw-bold" id="networkDisplay">
+                  {{ network_info.chain|upper|replace("-", " ") }}
+                </div>
               </div>
+            </div>
+            <div class="col-6">
+              <div class="border rounded p-3 text-center">
+                <small class="text-muted">Settlement</small>
+                <div class="fw-bold">Atomic Split</div>
+                <small class="text-muted" style="font-size: 0.7em"
+                  >Instant</small
+                >
+              </div>
+            </div>
+          </div>
+
+          <!-- Wallet Connection Section -->
+          <div id="walletSection" class="mb-3">
+            <div class="d-grid">
+              <button id="connectBtn" class="btn btn-warning btn-lg">
+                🔌 Connect MetaMask
+              </button>
+            </div>
+          </div>
+
+          <!-- Payment Section (Hidden Initially) -->
+          <div id="paymentSection" style="display: none" class="mb-3">
+            <div class="wallet-connected mb-3 p-3 bg-light rounded">
+              <div class="d-flex justify-content-between align-items-center">
+                <div>
+                  <small class="text-muted">Connected Wallet</small>
+                  <div id="walletAddress" class="fw-bold"></div>
+                </div>
+                <button
+                  id="disconnectBtn"
+                  class="btn btn-sm btn-outline-secondary"
+                >
+                  Disconnect
+                </button>
+              </div>
+            </div>
+
+            <div class="d-grid mb-2">
+              <button id="payBtn" class="btn btn-success btn-lg">
+                💰 Pay {{ (amount | float + 0.01) | round(2) }} USDC
+              </button>
+            </div>
+
+            <!-- How it works -->
+            <div class="alert alert-light border small">
+              <div class="mb-2"><strong>✨ How it works:</strong></div>
+              <ul class="mb-0 ps-3">
+                <li>You sign one authorization (no gas fees!)</li>
+                <li>
+                  Payment splits automatically in ONE transaction:
+                  <ul class="small">
+                    <li>{{ amount }} → Merchant</li>
+                    <li>$0.01 → 0xmeta (facilitator fee)</li>
+                  </ul>
+                </li>
+                <li>All-or-nothing: Both succeed or both fail</li>
+              </ul>
+            </div>
+          </div>
+
+          <!-- Status Messages -->
+          <div id="status" class="mt-3" aria-live="polite"></div>
+        </div>
+
+        <!-- Success Section with JSON Response (Hidden Initially) -->
+        <div id="successSection" style="display: none">
+          <!-- Verification Response -->
+          <div id="verificationResponse" class="mb-4" style="display: none">
+            <div class="response-header">
+              <h5 class="mb-0">
+                <span class="status-badge status-verified">
+                  <span>✓</span>
+                  <span>Payment Verified</span>
+                </span>
+              </h5>
               <button
-                id="disconnectBtn"
-                class="btn btn-sm btn-outline-secondary"
+                id="copyVerifyBtn"
+                class="btn btn-sm btn-outline-secondary copy-btn"
               >
-                Disconnect
+                📋 Copy JSON
               </button>
             </div>
+            <div class="json-viewer" id="verifyJsonViewer"></div>
           </div>
 
-          <div class="d-grid mb-2">
-            <button id="payBtn" class="btn btn-success btn-lg">
-              💰 Pay {{ amount }} USDC
+          <!-- Settlement Response -->
+          <div id="settlementResponse" class="mb-4" style="display: none">
+            <div class="response-header">
+              <h5 class="mb-0">
+                <span class="status-badge status-settled">
+                  <span>⚡</span>
+                  <span>Settlement Executed</span>
+                </span>
+              </h5>
+              <button
+                id="copySettleBtn"
+                class="btn btn-sm btn-outline-secondary copy-btn"
+              >
+                📋 Copy JSON
+              </button>
+            </div>
+            <div class="json-viewer" id="settleJsonViewer"></div>
+          </div>
+
+          <!-- Action Buttons -->
+          <div class="d-flex justify-content-center gap-2 mt-4">
+            <button id="viewPhotosBtn" class="btn btn-primary">
+              🖼️ View Premium Photos
             </button>
-          </div>
-          <div class="text-muted small">
-            ✨ Using x402 via 0xmeta - no gas fees, just sign authorization!
-          </div>
-        </div>
-
-        <!-- Status Messages -->
-        <div id="status" class="mt-3" aria-live="polite"></div>
-
-        <!-- Success Section (Hidden Initially) -->
-        <div id="successSection" style="display: none" class="mt-3">
-          <div class="alert alert-success text-center">
-            <h4 class="mb-1">✅ Payment Authorized</h4>
-            <p class="mb-2">
-              Preparing your premium photos — redirecting shortly.
-            </p>
-            <div class="d-flex justify-content-center gap-2">
-              <button id="viewNowBtn" class="btn btn-primary">View Now</button>
-              <button id="stayBtn" class="btn btn-outline-secondary">
-                Stay
-              </button>
-            </div>
-            <p class="mt-2 text-muted small">
-              Auto-redirect in <span id="countdown">3</span>s…
-            </p>
+            <button id="tryAgainBtn" class="btn btn-outline-secondary">
+              🔄 Try Another Payment
+            </button>
           </div>
         </div>
       </div>
     </div>
   </div>
 </div>
+
+<script>
+  // Enhanced app.js with JSON response display
+  (function () {
+    let verifyResponse = null;
+    let settleResponse = null;
+
+    // Syntax highlighting for JSON
+    function syntaxHighlight(json) {
+      if (typeof json !== "string") {
+        json = JSON.stringify(json, null, 2);
+      }
+      json = json
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+      return json.replace(
+        /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,
+        function (match) {
+          let cls = "json-number";
+          if (/^"/.test(match)) {
+            if (/:$/.test(match)) {
+              cls = "json-key";
+            } else {
+              cls = "json-string";
+            }
+          } else if (/true|false/.test(match)) {
+            cls = "json-boolean";
+          } else if (/null/.test(match)) {
+            cls = "json-null";
+          }
+          return '<span class="' + cls + '">' + match + "</span>";
+        }
+      );
+    }
+
+    // Display JSON response
+    function displayJsonResponse(containerId, data) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+
+      const highlighted = syntaxHighlight(data);
+      container.innerHTML = `<pre>${highlighted}</pre>`;
+    }
+
+    // Copy JSON to clipboard
+    function copyToClipboard(data) {
+      const text = JSON.stringify(data, null, 2);
+      navigator.clipboard
+        .writeText(text)
+        .then(() => {
+          alert("✓ JSON copied to clipboard!");
+        })
+        .catch((err) => {
+          console.error("Copy failed:", err);
+        });
+    }
+
+    // Show success section with responses
+    function showSuccessWithResponses(verifyData, settleData) {
+      // Hide payment flow
+      document.getElementById("paymentFlow").style.display = "none";
+
+      // Show success section
+      const successSection = document.getElementById("successSection");
+      successSection.style.display = "block";
+
+      // Display verification response
+      if (verifyData) {
+        document.getElementById("verificationResponse").style.display = "block";
+        displayJsonResponse("verifyJsonViewer", verifyData);
+        verifyResponse = verifyData;
+      }
+
+      // Display settlement response
+      if (settleData) {
+        document.getElementById("settlementResponse").style.display = "block";
+        displayJsonResponse("settleJsonViewer", settleData);
+        settleResponse = settleData;
+      }
+    }
+
+    // Bind copy buttons
+    document.getElementById("copyVerifyBtn")?.addEventListener("click", () => {
+      if (verifyResponse) copyToClipboard(verifyResponse);
+    });
+
+    document.getElementById("copySettleBtn")?.addEventListener("click", () => {
+      if (settleResponse) copyToClipboard(settleResponse);
+    });
+
+    // View photos button
+    document.getElementById("viewPhotosBtn")?.addEventListener("click", () => {
+      window.location.href = "/photos";
+    });
+
+    // Try again button
+    document.getElementById("tryAgainBtn")?.addEventListener("click", () => {
+      window.location.reload();
+    });
+
+    // Expose to window for app.js to use
+    window.showPaymentSuccess = showSuccessWithResponses;
+  })();
+</script>
 {% endblock %} {% block scripts %}
 <!-- Load Web3.js -->
 <script src="https://cdn.jsdelivr.net/npm/web3@1.10.0/dist/web3.min.js"></script>
 
-<!-- Load our app.js which handles hybrid payment logic -->
-<!-- Using direct path since url_for has route ordering issues -->
+<!-- Load our app.js which handles payment logic -->
 <script src="/static/js/app.js"></script>
 {% endblock %}

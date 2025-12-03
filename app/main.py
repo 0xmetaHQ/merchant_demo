@@ -184,21 +184,24 @@ async def admin_dashboard(request: Request):
         }
     )
 
-
 @app.get("/api/config")
 async def get_config():
-    """API endpoint to get current network configuration."""
+    """
+    API endpoint to get current network configuration.
+    
+    ✅ CRITICAL FIX: Convert price_usdc_wei to STRING for frontend
+    """
     return {
         "network": settings.CHAIN,
         "chain_id": settings.CHAIN_ID,
         "usdc_address": settings.USDC_TOKEN_ADDRESS,
         "merchant_address": settings.MERCHANT_PAYOUT_WALLET,
-        "price_usdc_wei": settings.PRICE_IN_USDC,
+        # ✅ CRITICAL FIX: Convert to string!
+        "price_usdc_wei": str(settings.PRICE_IN_USDC),  # Changed from settings.PRICE_IN_USDC
         "price_usdc": settings.PRICE_IN_USDC / 1000000,
         "rpc_url": settings.RPC_URL,
         "block_explorer": settings.BLOCK_EXPLORER_URL,
     }
-
 
 @app.get("/api/approval-status")
 async def get_approval_status():

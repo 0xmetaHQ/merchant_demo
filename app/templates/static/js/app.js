@@ -1,10 +1,7 @@
-// app/static/js/app.js
 // Pure x402 payment flow via 0xmeta facilitator
+// ✅ UPDATED: Authorization includes merchant payment + 0xmeta fee ($0.01)
 // ✅ User signs EIP-3009 authorization (NO on-chain transaction)
-// ✅ 0xmeta handles settlement on-chain
-// ✅ Generates unique nonce per payment
-// ✅ Prevents duplicate submissions
-// 🔧 FIXED: Proper validBefore timestamp and authorization lifecycle
+// ✅ 0xmeta handles atomic settlement (split payment)
 
 console.log("x402 Merchant Demo - Pure x402 Payment Module Loaded");
 
@@ -14,10 +11,14 @@ console.log("x402 Merchant Demo - Pure x402 Payment Module Loaded");
 let web3 = null;
 let walletAddress = null;
 let CONFIG = null;
-let isPaymentInProgress = false; // ✅ Prevent duplicate submissions
-let currentAuthorizationNonce = null; // 🔧 Track current authorization
+let isPaymentInProgress = false;
+let currentAuthorizationNonce = null;
 const AUTO_REDIRECT_SECONDS = 3;
 let countdownTimer = null;
+
+// ✅ CRITICAL: 0xmeta fee configuration
+const OXMETA_FEE_USDC_WEI = 10000; // $0.01 USDC in wei (6 decimals)
+const OXMETA_FEE_USDC = 0.01; // For display
 
 // ============================================================================
 // UTILITY FUNCTIONS
@@ -78,6 +79,20 @@ function showPaymentSection() {
   if (walletSection) walletSection.style.display = "none";
   if (paymentSection) paymentSection.style.display = "block";
   if (walletAddressEl) walletAddressEl.textContent = shorten(walletAddress);
+
+  // ✅ Update pay button to show total amount (merchant + fee)
+  updatePayButtonText();
+}
+
+// ✅ NEW: Update pay button to show total cost
+function updatePayButtonText() {
+  const payBtn = $("#payBtn");
+  if (payBtn && CONFIG) {
+    const totalAmount = (
+      parseFloat(CONFIG.price_usdc) + OXMETA_FEE_USDC
+    ).toFixed(2);
+    payBtn.innerHTML = `💰 Pay ${totalAmount} USDC <small class="d-block" style="font-size: 0.7em;">Includes $${OXMETA_FEE_USDC} facilitator fee</small>`;
+  }
 }
 
 // ============================================================================
@@ -92,7 +107,27 @@ async function loadConfig() {
     }
     CONFIG = await response.json();
     console.log("✅ Config loaded:", CONFIG);
+
+    // ✅ CRITICAL FIX: Ensure all values are STRINGS
+    CONFIG.price_usdc_wei = String(CONFIG.price_usdc_wei);
+    CONFIG.total_price_usdc_wei = String(
+      parseInt(CONFIG.price_usdc_wei) + OXMETA_FEE_USDC_WEI
+    );
+    CONFIG.total_price_usdc = (
+      parseFloat(CONFIG.price_usdc) + OXMETA_FEE_USDC
+    ).toFixed(2);
+
+    console.log("💰 Payment breakdown:", {
+      merchant_amount: CONFIG.price_usdc,
+      fee_amount: OXMETA_FEE_USDC,
+      total_amount: CONFIG.total_price_usdc,
+      merchant_wei: CONFIG.price_usdc_wei, // ✅ Now string
+      fee_wei: String(OXMETA_FEE_USDC_WEI), // ✅ String
+      total_wei: CONFIG.total_price_usdc_wei, // ✅ Now string
+    });
+
     updateNetworkDisplay();
+    updatePayButtonText();
     return CONFIG;
   } catch (error) {
     console.error("❌ Failed to load config:", error);
@@ -151,7 +186,6 @@ async function connectWallet() {
     showPaymentSection();
     updateStatus("✅ Wallet connected: " + shorten(walletAddress), "success");
 
-    // Switch to correct network
     await switchToNetwork();
   } catch (err) {
     console.error("Wallet connection error:", err);
@@ -166,7 +200,7 @@ function disconnectWallet() {
   walletAddress = null;
   web3 = null;
   isPaymentInProgress = false;
-  currentAuthorizationNonce = null; // 🔧 Clear authorization
+  currentAuthorizationNonce = null;
 
   const walletSection = $("#walletSection");
   const paymentSection = $("#paymentSection");
@@ -195,7 +229,6 @@ async function switchToNetwork() {
     console.log(`✅ Switched to ${CONFIG.network}`);
   } catch (switchError) {
     if (switchError.code === 4902) {
-      // Network not added yet
       const networkParams = {
         chainId: CONFIG.chain_id,
         chainName: CONFIG.network === "base" ? "Base" : "Base Sepolia",
@@ -217,25 +250,21 @@ async function switchToNetwork() {
   }
 }
 
-// ============================================================================
-// EIP-3009 AUTHORIZATION CREATION (PURE x402 - NO ON-CHAIN TX)
-// ✅ Generates UNIQUE nonce for EACH payment attempt
-// 🔧 FIXED: Proper validBefore timestamp (24 hours instead of 1 hour)
-// 🔧 FIXED: Invalidate previous authorizations on new attempts
-// ============================================================================
-
 /**
  * Create EIP-3009 transferWithAuthorization signature
- * This is sent to 0xmeta facilitator which handles on-chain execution
+ *
+ * ✅ CRITICAL: Authorization amount = merchant_amount + fee_amount
+ * This allows 0xmeta to execute atomic split payment:
+ * - merchant receives merchant_amount
+ * - treasury receives fee_amount
+ * - both in SINGLE transaction
  */
 async function createEIP3009Authorization() {
   if (!web3 || !walletAddress || !CONFIG) {
     throw new Error("Web3 not initialized");
   }
 
-  console.log(
-    "🔐 Creating EIP-3009 authorization (pure x402 - no on-chain tx)..."
-  );
+  console.log("🔐 Creating EIP-3009 authorization with fee included...");
 
   // 1. Get USDC contract details
   const usdcContract = new web3.eth.Contract(
@@ -265,8 +294,7 @@ async function createEIP3009Authorization() {
 
   console.log(`📝 Token: ${tokenName} v${tokenVersion}`);
 
-  // 2. ✅ CRITICAL: Generate UNIQUE random nonce for EACH payment
-  // 🔧 FIXED: Ensure we're not reusing nonces
+  // 2. Generate UNIQUE random nonce
   const nonceBytes = new Uint8Array(32);
   window.crypto.getRandomValues(nonceBytes);
   const nonce =
@@ -275,7 +303,6 @@ async function createEIP3009Authorization() {
       .map((b) => b.toString(16).padStart(2, "0"))
       .join("");
 
-  // Store current nonce to prevent reuse
   currentAuthorizationNonce = nonce;
   console.log("✅ Generated UNIQUE nonce:", nonce.substring(0, 20) + "...");
 
@@ -299,28 +326,35 @@ async function createEIP3009Authorization() {
     ],
   };
 
-  // 5. 🔧 FIXED: Build message with proper timestamps
-  // Use validAfter = 0 (immediately valid)
-  // Use validBefore = 24 hours from now (instead of 1 hour)
+  // 5. ✅ CRITICAL: Build message with TOTAL amount (merchant + fee)
   const validAfter = "0";
   const validBefore = String(Math.floor(Date.now() / 1000) + 86400); // 24 hours
 
   const message = {
     from: walletAddress,
     to: CONFIG.merchant_address,
-    value: CONFIG.price_usdc_wei.toString(),
-    validAfter: validAfter,
-    validBefore: validBefore,
-    nonce: nonce,
+    value: CONFIG.total_price_usdc_wei, // This is already a string from config
+    validAfter: validAfter, // Already a string
+    validBefore: validBefore, // Already a string
+    nonce: nonce, // Already a string
   };
 
-  console.log("📋 Signing message:", {
+  console.log("📋 Signing authorization:", {
     from: message.from,
     to: message.to,
-    value: message.value,
+    merchant_amount: CONFIG.price_usdc_wei,
+    fee_amount: OXMETA_FEE_USDC_WEI,
+    total_value: message.value,
     validBefore: new Date(validBefore * 1000).toISOString(),
     nonce: nonce.substring(0, 20) + "...",
   });
+
+  // Show user what they're authorizing
+  updateStatus(
+    `🔐 Authorizing ${CONFIG.total_price_usdc} USDC total<br/>` +
+      `<small>→ ${CONFIG.price_usdc} to merchant + $${OXMETA_FEE_USDC} facilitator fee</small>`,
+    "info"
+  );
 
   // 6. Sign using EIP-712
   const signature = await window.ethereum.request({
@@ -344,15 +378,15 @@ async function createEIP3009Authorization() {
     ],
   });
 
-  console.log("✅ EIP-3009 signature created");
+  console.log("✅ EIP-3009 signature created with fee included");
 
   return {
     authorization: {
       from: walletAddress,
       to: CONFIG.merchant_address,
-      value: CONFIG.price_usdc_wei.toString(),
-      validAfter: validAfter,
-      validBefore: validBefore,
+      value: CONFIG.total_price_usdc_wei, // ✅ String, not number
+      validAfter: String(validAfter), // ✅ Ensure string
+      validBefore: String(validBefore), // ✅ Ensure string
       nonce: nonce,
       token: CONFIG.usdc_address,
     },
@@ -362,16 +396,13 @@ async function createEIP3009Authorization() {
 
 // ============================================================================
 // PURE x402 PAYMENT FLOW VIA 0xmeta FACILITATOR
-// ✅ NO on-chain transaction from user (no gas fees!)
-// ✅ User only signs authorization
-// ✅ 0xmeta handles on-chain settlement
-// 🔧 FIXED: Better error handling and state management
+// ✅ UPDATED: Sends merchant_amount to facilitator (not total)
+// ✅ Facilitator validates that authorization = merchant_amount + fee
 // ============================================================================
 
 async function makePayment() {
-  // ✅ Prevent duplicate submissions
   if (isPaymentInProgress) {
-    console.log("⚠️ Payment already in progress, ignoring duplicate request");
+    console.log("⚠️ Payment already in progress");
     return;
   }
 
@@ -388,7 +419,6 @@ async function makePayment() {
     }
   }
 
-  // ✅ Lock payment processing
   isPaymentInProgress = true;
 
   const payBtn = $("#payBtn");
@@ -401,27 +431,29 @@ async function makePayment() {
     updateStatus("🔐 Creating payment authorization...", "info");
 
     // ========================================================================
-    // STEP 1: Create EIP-3009 authorization (NO on-chain transaction!)
+    // STEP 1: Create EIP-3009 authorization (includes fee!)
     // ========================================================================
     const { authorization, signature } = await createEIP3009Authorization();
 
     console.log("✅ Authorization created:", {
       from: authorization.from,
       to: authorization.to,
-      value: authorization.value,
-      nonce: authorization.nonce.substring(0, 20) + "...",
+      total_authorized: authorization.value,
+      merchant_amount: CONFIG.price_usdc_wei,
+      fee_amount: OXMETA_FEE_USDC_WEI,
     });
 
     // ========================================================================
     // STEP 2: Send to 0xmeta facilitator for verification
+    // ✅ CRITICAL FIX: Convert ALL numbers to strings
     // ========================================================================
     updateStatus("🔄 Verifying payment with 0xmeta...", "info");
 
     const verifyPayload = {
-      transaction_hash: authorization.nonce, // Use nonce as transaction reference
+      transaction_hash: authorization.nonce,
       chain: CONFIG.network,
       seller_address: CONFIG.merchant_address,
-      expected_amount: authorization.value,
+      expected_amount: String(CONFIG.price_usdc_wei), // ✅ FIXED: Convert to string
       expected_token: CONFIG.usdc_address,
       metadata: {
         source: "x402_merchant_demo",
@@ -436,10 +468,19 @@ async function makePayment() {
           },
         },
         payer: walletAddress,
+        payment_breakdown: {
+          merchant_amount: String(CONFIG.price_usdc_wei), // ✅ FIXED: Convert to string
+          fee_amount: String(OXMETA_FEE_USDC_WEI), // ✅ FIXED: Already string, but ensure
+          total_authorized: String(CONFIG.total_price_usdc_wei), // ✅ FIXED: Convert to string
+        },
       },
     };
 
     console.log("📦 Sending verification request to 0xmeta...");
+    console.log(
+      "💰 Payment breakdown:",
+      verifyPayload.metadata.payment_breakdown
+    );
 
     const verifyResponse = await fetch("http://localhost:8000/v1/verify", {
       method: "POST",
@@ -451,7 +492,10 @@ async function makePayment() {
 
     if (!verifyResponse.ok) {
       const errorData = await verifyResponse.json();
-      throw new Error(errorData.detail || "Verification failed");
+      console.error("❌ Verification failed:", errorData);
+      throw new Error(
+        errorData.error?.message || errorData.detail || "Verification failed"
+      );
     }
 
     const verifyData = await verifyResponse.json();
@@ -461,8 +505,9 @@ async function makePayment() {
 
     // ========================================================================
     // STEP 3: Send settlement request to 0xmeta
+    // 0xmeta will execute atomic split payment
     // ========================================================================
-    updateStatus("⚡ Settling payment via 0xmeta...", "info");
+    updateStatus("⚡ Settling payment via 0xmeta (atomic split)...", "info");
 
     if (payBtn) {
       payBtn.textContent = "⏳ Settling Payment...";
@@ -485,122 +530,84 @@ async function makePayment() {
 
     if (!settleResponse.ok) {
       const errorData = await settleResponse.json();
-      throw new Error(errorData.detail || "Settlement failed");
+      console.error("❌ Settlement failed:", errorData);
+      throw new Error(
+        errorData.error?.message || errorData.detail || "Settlement failed"
+      );
     }
 
     const settleData = await settleResponse.json();
     console.log("✅ Settlement response:", settleData);
+    console.log("💰 Fee collection:", settleData.details);
 
     // ========================================================================
-    // STEP 4: Success! Payment authorized and settling
+    // STEP 4: Success! Display JSON responses
     // ========================================================================
 
-    updateStatus(
-      `✅ Payment authorized! Settlement ID: ${settleData.settlement_id}`,
-      "success"
-    );
+    console.log("✅ Payment flow complete!");
+    console.log("Verification:", verifyData);
+    console.log("Settlement:", settleData);
 
-    // Update UI
-    const paymentSection = $("#paymentSection");
-    const successSection = $("#successSection");
+    // Call the new display function from paywall.html
+    if (typeof window.showPaymentSuccess === "function") {
+      window.showPaymentSuccess(verifyData, settleData);
+    } else {
+      // Fallback to old success display
+      updateStatus(
+        `✅ Payment complete!<br/>` +
+          `<small>Settlement ID: ${settleData.settlement_id}</small><br/>` +
+          `<small>Merchant received: ${CONFIG.price_usdc} USDC</small><br/>` +
+          `<small>Fee collected: $${OXMETA_FEE_USDC} (atomic)</small>`,
+        "success"
+      );
 
-    if (paymentSection) paymentSection.style.display = "none";
-    if (successSection) successSection.style.display = "block";
+      const paymentSection = $("#paymentSection");
+      const successSection = $("#successSection");
 
-    // Store verification for future use
+      if (paymentSection) paymentSection.style.display = "none";
+      if (successSection) successSection.style.display = "block";
+    }
+
     try {
       sessionStorage.setItem("verificationId", verificationId);
       sessionStorage.setItem("settlementId", settleData.settlement_id);
+      sessionStorage.setItem("verifyResponse", JSON.stringify(verifyData));
+      sessionStorage.setItem("settleResponse", JSON.stringify(settleData));
     } catch (e) {
       console.warn("Session storage failed:", e);
     }
+    // ============================================================================
+    // EVENT LISTENERS
+    // ============================================================================
 
-    // Auto-redirect
-    startAutoRedirect();
-  } catch (err) {
-    console.error("Payment error:", err);
+    if (isMetaMaskInstalled()) {
+      window.ethereum.on("accountsChanged", (accounts) => {
+        console.log("Accounts changed:", accounts);
+        if (!accounts || accounts.length === 0) {
+          disconnectWallet();
+        } else {
+          walletAddress = accounts[0];
+          sessionStorage.setItem("walletAddress", walletAddress);
+          showPaymentSection();
+          updateStatus(
+            "🔄 Account changed to " + shorten(walletAddress),
+            "info"
+          );
+        }
+      });
 
-    // 🔧 IMPROVED: Better error messages
-    let errorMsg = "Payment failed";
-    if (err.message.includes("User denied")) {
-      errorMsg = "Signature cancelled by user";
-    } else if (err.message.includes("expired")) {
-      errorMsg = "Authorization expired. Please try again";
-    } else if (err.message.includes("used or canceled")) {
-      errorMsg = "Authorization already used. Please try again";
-    } else {
-      errorMsg = err.message || err;
+      window.ethereum.on("chainChanged", (chainId) => {
+        console.log("Chain changed:", chainId);
+        updateStatus(
+          "🔄 Network changed. Please ensure correct network.",
+          "info"
+        );
+      });
     }
-
-    updateStatus("❌ " + errorMsg, "danger");
-
-    // ✅ Re-enable button ONLY on error
-    isPaymentInProgress = false;
-    currentAuthorizationNonce = null; // Clear failed authorization
-
-    if (payBtn) {
-      payBtn.disabled = false;
-      payBtn.textContent = `💰 Pay ${CONFIG.price_usdc} USDC`;
-    }
+  } catch (e) {
+    console.error("Error in makePayment:", e);
+    updateStatus("❌ Payment failed: " + (e.message || e), "danger");
   }
-
-  // NOTE: Don't unlock on success - we redirect instead
-}
-
-// ============================================================================
-// AUTO-REDIRECT
-// ============================================================================
-
-function startAutoRedirect(seconds = AUTO_REDIRECT_SECONDS) {
-  let t = seconds;
-  const countdownEl = $("#countdown");
-
-  if (countdownEl) {
-    countdownEl.textContent = t;
-  }
-
-  countdownTimer = setInterval(() => {
-    t -= 1;
-    if (countdownEl) {
-      countdownEl.textContent = t;
-    }
-
-    if (t <= 0) {
-      clearInterval(countdownTimer);
-      window.location.href = "/photos";
-    }
-  }, 1000);
-}
-
-function stopAutoRedirect() {
-  if (countdownTimer) {
-    clearInterval(countdownTimer);
-    countdownTimer = null;
-    updateStatus("You stayed on the page.", "info");
-  }
-}
-
-// ============================================================================
-// EVENT LISTENERS - MetaMask Events
-// ============================================================================
-
-if (isMetaMaskInstalled()) {
-  window.ethereum.on("accountsChanged", (accounts) => {
-    console.log("Accounts changed:", accounts);
-    if (!accounts || accounts.length === 0) {
-      disconnectWallet();
-    } else {
-      walletAddress = accounts[0];
-      sessionStorage.setItem("walletAddress", walletAddress);
-      showPaymentSection();
-      updateStatus("🔄 Account changed to " + shorten(walletAddress), "info");
-    }
-  });
-
-  window.ethereum.on("chainChanged", (chainId) => {
-    console.log("Chain changed:", chainId);
-    updateStatus("🔄 Network changed. Please ensure correct network.", "info");
-  });
 }
 
 // ============================================================================
@@ -618,13 +625,12 @@ window.addEventListener("load", async () => {
 });
 
 // ============================================================================
-// DOM READY - Bind Events
+// DOM READY
 // ============================================================================
 
 document.addEventListener("DOMContentLoaded", () => {
   console.log("📋 DOM Ready - Binding events");
 
-  // Restore wallet state
   if (sessionStorage.getItem("walletConnected") === "true") {
     walletAddress = sessionStorage.getItem("walletAddress");
     if (walletAddress && isMetaMaskInstalled()) {
@@ -633,7 +639,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // Bind button events
   const connectBtn = $("#connectBtn");
   const payBtn = $("#payBtn");
   const disconnectBtn = $("#disconnectBtn");
@@ -665,7 +670,6 @@ document.addEventListener("DOMContentLoaded", () => {
     stayBtn.addEventListener("click", stopAutoRedirect);
   }
 
-  // Check MetaMask availability
   if (!isMetaMaskInstalled()) {
     updateStatus(
       "❌ MetaMask not found. Please install it to continue.",
@@ -681,7 +685,6 @@ document.addEventListener("DOMContentLoaded", () => {
     );
   }
 
-  // Handle /photos page - verify payment
   if (window.location.pathname === "/photos") {
     const verifiedPayment = sessionStorage.getItem("verifiedPayment");
     if (verifiedPayment) {
@@ -725,7 +728,7 @@ function preloadImages(photoUrls) {
 }
 
 // ============================================================================
-// EXPOSE TO GLOBAL SCOPE (for console debugging)
+// EXPOSE TO GLOBAL SCOPE
 // ============================================================================
 
 window.connectWallet = connectWallet;
