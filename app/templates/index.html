@@ -1,67 +1,91 @@
-<!-- app/templates/index.html -->
-{% extends "base.html" %} {% block title %}Home - x402 Demo{% endblock %} {%
-block content %}
+<!-- ============================================================================ -->
+<!-- FILE: app/templates/index.html -->
+<!-- ============================================================================ -->
+{% extends "base.html" %} {% block title %}Home - x402 Photo Gallery{% endblock
+%} {% block styles %}
+<style>
+  .hero-section {
+    text-align: center;
+    padding: 4rem 0;
+  }
+
+  .hero-section h1 {
+    font-size: 3.5rem;
+    font-weight: 800;
+    background: var(--accent-gradient);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 1.5rem;
+  }
+
+  .hero-section .lead {
+    font-size: 1.25rem;
+    color: var(--text-secondary);
+    max-width: 600px;
+    margin: 0 auto 3rem;
+  }
+
+  .feature-card {
+    height: 100%;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    padding: 2rem;
+    text-align: center;
+    transition: all 0.3s ease;
+  }
+
+  .feature-card:hover {
+    transform: translateY(-8px);
+    border-color: var(--accent-primary);
+  }
+
+  .feature-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    filter: drop-shadow(0 0 20px rgba(99, 102, 241, 0.4));
+  }
+</style>
+{% endblock %} {% block content %}
 <div class="row justify-content-center">
-  <div class="col-md-8 text-center">
-    <div class="hero-section mb-5">
-      <h1 class="display-4 mb-3">🖼️ Premium Photo Gallery</h1>
-      <p class="lead mb-4">
-        Experience seamless crypto payments with x402 protocol
+  <div class="col-12 col-lg-10">
+    <div class="hero-section">
+      <h1>🖼️ Premium Photo Gallery</h1>
+      <p class="lead">
+        Experience seamless crypto payments with the x402 protocol
       </p>
-      <div class="row g-4 mb-5">
+
+      <div class="row g-4 mb-4">
         <div class="col-md-4">
-          <div class="card h-100">
-            <div class="card-body">
-              <h5>🔗 Connect</h5>
-              <p>Connect your Web3 wallet</p>
-            </div>
+          <div class="feature-card">
+            <div class="feature-icon">🔗</div>
+            <h5>Connect Wallet</h5>
+            <p>Link your Web3 wallet using MetaMask</p>
           </div>
         </div>
         <div class="col-md-4">
-          <div class="card h-100">
-            <div class="card-body">
-              <h5>💳 Pay</h5>
-              <p>Pay 0.01 USDC with 0xmeta</p>
-            </div>
+          <div class="feature-card">
+            <div class="feature-icon">💳</div>
+            <h5>Instant Payment</h5>
+            <p>Pay 0.01 USDC through 0xmeta</p>
           </div>
         </div>
         <div class="col-md-4">
-          <div class="card h-100">
-            <div class="card-body">
-              <h5>🎉 Access</h5>
-              <p>Enjoy premium content</p>
-            </div>
+          <div class="feature-card">
+            <div class="feature-icon">🎉</div>
+            <h5>Access Content</h5>
+            <p>Unlock premium photos instantly</p>
           </div>
         </div>
       </div>
 
-      <a href="/photos" class="btn btn-primary btn-lg me-3"> 🚀 Try Demo </a>
-      <a href="/api-docs" class="btn btn-outline-primary btn-lg">
-        📚 API Docs
+      <a href="/photos" class="btn btn-primary btn-lg me-3">
+        🚀 Try Live Demo
       </a>
-    </div>
-
-    <div class="row text-start">
-      <div class="col-md-6">
-        <h4>💡 How It Works</h4>
-        <ol class="list-group list-group-numbered">
-          <li class="list-group-item">Visit the gallery page</li>
-          <li class="list-group-item">Connect your MetaMask wallet</li>
-          <li class="list-group-item">Pay 0.01 USDC via 0xmeta</li>
-          <li class="list-group-item">Access premium photos instantly</li>
-        </ol>
-      </div>
-      <div class="col-md-6">
-        <h4>⚙️ Configuration</h4>
-        <div class="card">
-          <div class="card-body">
-            <p><strong>Network:</strong> Base Sepolia</p>
-            <p><strong>Payment:</strong> 0.01 USDC</p>
-            <p><strong>Token:</strong> USDC</p>
-            <p><strong>Protocol:</strong> x402 + 0xmeta</p>
-          </div>
-        </div>
-      </div>
+      <a href="/api-docs" class="btn btn-outline-primary btn-lg">
+        📚 View API Docs
+      </a>
     </div>
   </div>
 </div>
