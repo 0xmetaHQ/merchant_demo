@@ -1,6 +1,3 @@
-# =============================================================================
-# FIX 1: app/config.py - Updated Configuration
-# =============================================================================
 """
 Configuration for merchant demo app.
 FIXED: Network properly set to base-sepolia for testing

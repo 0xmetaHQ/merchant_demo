@@ -1,13 +1,4 @@
 // ============================================================================
-// FILE: app/templates/static/js/app.js
-// ============================================================================
-// Pure x402 payment flow via 0xmeta facilitator
-// User signs EIP-3009 authorization (NO on-chain transaction)
-// 0xmeta handles atomic settlement (split payment)
-
-console.log("x402 Merchant Demo - Pure x402 Payment Module Loaded");
-
-// ============================================================================
 // GLOBAL STATE
 // ============================================================================
 let web3 = null;
