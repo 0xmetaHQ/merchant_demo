@@ -40,7 +40,6 @@ class X402PaymentVerifier:
         resource: str,
         resource_description: str,
         eip712_version: str = "2",
-        facilitator_base_url: str = "https://facilitator.0xmeta.ai",
     ):
         self.payment_requirements = PaymentRequirements(
             scheme="exact",
@@ -52,7 +51,6 @@ class X402PaymentVerifier:
             asset=payment_asset,
             extra={"name": asset_name, "version": eip712_version},
         )
-        self.facilitator_base_url = facilitator_base_url
         self.logger = logger
 
     async def __call__(self, request: Request) -> Tuple[bool, PaymentRequirements]:

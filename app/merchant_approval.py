@@ -18,8 +18,8 @@ from web3 import HTTPProvider
 load_dotenv()
 
 # Network configurations
-# Note: TREASURY_ADDRESS is used as the facilitator address for fee collection
-TREASURY_ADDRESS = os.getenv("TREASURY_ADDRESS")
+# Note: OXMETA_TREASURY_WALLET is used as the facilitator address for fee collection
+OXMETA_TREASURY_WALLET = os.getenv("OXMETA_TREASURY_WALLET")
 
 NETWORKS = {
     "base": {
@@ -30,7 +30,7 @@ NETWORKS = {
         ],
         "chain_id": 8453,
         "usdc_address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-        "facilitator_address": TREASURY_ADDRESS,
+        "facilitator_address": OXMETA_TREASURY_WALLET,
         "explorer": "https://basescan.org"
     },
     "base-sepolia": {
@@ -41,7 +41,7 @@ NETWORKS = {
         ],
         "chain_id": 84532,
         "usdc_address": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-        "facilitator_address": TREASURY_ADDRESS,
+        "facilitator_address": OXMETA_TREASURY_WALLET,
         "explorer": "https://sepolia.basescan.org"
     }
 }
@@ -126,7 +126,7 @@ def _get_web3_connection(rpc_urls: list, timeout: int = 10) -> Web3:
     raise ConnectionError(f"Failed to connect to any RPC endpoint. Tried: {', '.join(rpc_urls)}")
 
 
-async def check_approval_status(network: str, merchant_address: str, treasury_address: str):
+async def check_approval_status(network: str, merchant_address: str, treasury_wallet: str):
     """Check current approval status"""
     config = NETWORKS[network]
     w3 = Web3(Web3.HTTPProvider(config["rpc_url"]))
@@ -141,7 +141,7 @@ async def check_approval_status(network: str, merchant_address: str, treasury_ad
     )
     
     merchant_checksum = Web3.to_checksum_address(merchant_address)
-    treasury_checksum = Web3.to_checksum_address(treasury_address)
+    treasury_checksum = Web3.to_checksum_address(treasury_wallet)
     
     # Get allowance
     allowance_wei = usdc.functions.allowance(merchant_checksum, treasury_checksum).call()
@@ -168,7 +168,7 @@ async def setup_approval(network: str, amount_usdc: float = 100.0):
     # Load environment variables
     merchant_private_key = os.getenv("MERCHANT_PRIVATE_KEY")
     merchant_address = os.getenv("MERCHANT_PAYOUT_WALLET")
-    treasury_address = os.getenv("TREASURY_ADDRESS")
+    treasury_wallet = os.getenv("OXMETA_TREASURY_WALLET")
     
     if not merchant_private_key:
         print("❌ MERCHANT_PRIVATE_KEY not found in .env")
@@ -180,8 +180,8 @@ async def setup_approval(network: str, amount_usdc: float = 100.0):
         print("❌ MERCHANT_PAYOUT_WALLET not found in .env")
         sys.exit(1)
     
-    if not treasury_address:
-        print("❌ TREASURY_ADDRESS not found in .env")
+    if not treasury_wallet:
+        print("❌ OXMETA_TREASURY_WALLET not found in .env")
         print("   This should be 0xmeta's treasury wallet address")
         sys.exit(1)
     
@@ -190,13 +190,13 @@ async def setup_approval(network: str, amount_usdc: float = 100.0):
     print("=" * 70)
     print(f"\nNetwork: {network}")
     print(f"Merchant: {merchant_address}")
-    print(f"Treasury (0xmeta): {treasury_address}")
+    print(f"Treasury (0xmeta): {treasury_wallet}")
     print(f"Approval Amount: {amount_usdc} USDC ({int(amount_usdc / 0.01):,} settlements)")
     print("=" * 70)
     
     # Check current status
     print("\n🔍 Checking current approval status...")
-    status = await check_approval_status(network, merchant_address, treasury_address)
+    status = await check_approval_status(network, merchant_address, treasury_wallet)
     
     if status:
         print(f"\n📊 Current Status:")
@@ -252,7 +252,7 @@ async def setup_approval(network: str, amount_usdc: float = 100.0):
     
     # Build approval transaction
     approval_amount_wei = int(amount_usdc * 1e6)
-    treasury_checksum = Web3.to_checksum_address(treasury_address)
+    treasury_checksum = Web3.to_checksum_address(treasury_wallet)
     
     print(f"\n🔐 Building approval transaction...")
     
@@ -300,7 +300,7 @@ async def setup_approval(network: str, amount_usdc: float = 100.0):
         print(f"   Gas Used: {receipt['gasUsed']}")
         
         # Verify new allowance
-        new_status = await check_approval_status(network, merchant_address, treasury_address)
+        new_status = await check_approval_status(network, merchant_address, treasury_wallet)
         if new_status:
             print(f"\n📊 New Status:")
             print(f"   Allowance: {new_status['allowance_usdc']:.2f} USDC")

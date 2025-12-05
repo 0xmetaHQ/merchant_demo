@@ -24,9 +24,6 @@ class Settings:
     FACILITATOR_VERIFY_URL = f"{FACILITATOR_BASE_URL}/v1/verify"
     FACILITATOR_SETTLE_URL = f"{FACILITATOR_BASE_URL}/v1/settle"
     
-    # ✅ REMOVED: No API key needed!
-    # 0xmeta facilitator is FREE and doesn't require API keys
-    
     # =========================================================================
     # Merchant Configuration
     # =========================================================================
@@ -165,40 +162,3 @@ try:
 except ValueError as e:
     print(f"❌ Configuration error: {e}")
     raise
-
-
-# =============================================================================
-# FIX 2: app/main.py - Dynamic Network Configuration
-# =============================================================================
-from fastapi import FastAPI, Request, HTTPException, Depends
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
-from fastapi.staticfiles import StaticFiles
-import httpx
-import uvicorn
-from typing import Tuple
-
-from app.x402_handler import X402PaymentVerifier, PaymentRequirements
-from app.config import settings
-
-app = FastAPI(
-    title="x402 Merchant Demo",
-    version="1.0",
-    description=f"Demo merchant app using 0xmeta on {settings.CHAIN}"
-)
-
-# Setup templates and static files
-templates = Jinja2Templates(directory="app/templates")
-app.mount("/static", StaticFiles(directory="app/templates/static"), name="static")
-
-
-@app.get("/", response_class=HTMLResponse)
-async def root(request: Request):
-    """Main landing page"""
-    return templates.TemplateResponse(
-        "index.html",
-        {
-            "request": request,
-            "network_info": settings.get_network_info()
-        }
-    )

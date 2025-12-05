@@ -49,7 +49,7 @@ async def startup_event():
     print(f"Merchant Address: {settings.MERCHANT_PAYOUT_WALLET}")
     print(f"USDC Token: {settings.USDC_TOKEN_ADDRESS}")
     print(f"Price: {settings.PRICE_IN_USDC / 1000000} USDC")
-    print(f"Treasury: {os.getenv('TREASURY_ADDRESS', 'Not set')}")
+    print(f"Treasury: {os.getenv('OXMETA_TREASURY_WALLET', 'Not set')}")
     print("="*80)
     
     # Check if approval functions are available
@@ -196,11 +196,11 @@ async def get_config():
         "chain_id": settings.CHAIN_ID,
         "usdc_address": settings.USDC_TOKEN_ADDRESS,
         "merchant_address": settings.MERCHANT_PAYOUT_WALLET,
-        # ✅ CRITICAL FIX: Convert to string!
-        "price_usdc_wei": str(settings.PRICE_IN_USDC),  # Changed from settings.PRICE_IN_USDC
+        "price_usdc_wei": str(settings.PRICE_IN_USDC), 
         "price_usdc": settings.PRICE_IN_USDC / 1000000,
         "rpc_url": settings.RPC_URL,
         "block_explorer": settings.BLOCK_EXPLORER_URL,
+        "treasury_wallet": os.getenv("OXMETA_TREASURY_WALLET"),
     }
 
 @app.get("/api/approval-status")
