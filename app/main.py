@@ -188,19 +188,25 @@ async def admin_dashboard(request: Request):
 async def get_config():
     """
     API endpoint to get current network configuration.
-    
-    ✅ CRITICAL FIX: Convert price_usdc_wei to STRING for frontend
     """
+
+    treasury_wallet = os.getenv("OXMETA_TREASURY_WALLET")
+    
+    if not treasury_wallet:
+        raise ValueError("OXMETA_TREASURY_WALLET not configured in .env")
+    
+
     return {
         "network": settings.CHAIN,
         "chain_id": settings.CHAIN_ID,
         "usdc_address": settings.USDC_TOKEN_ADDRESS,
-        "merchant_address": settings.MERCHANT_PAYOUT_WALLET,
-        "price_usdc_wei": str(settings.PRICE_IN_USDC), 
-        "price_usdc": settings.PRICE_IN_USDC / 1000000,
         "rpc_url": settings.RPC_URL,
         "block_explorer": settings.BLOCK_EXPLORER_URL,
-        "treasury_wallet": os.getenv("OXMETA_TREASURY_WALLET"),
+        "price_usdc": settings.PRICE_IN_USDC / 1_000_000,  
+        "price_usdc_wei": settings.PRICE_IN_USDC,
+        "merchant_address": settings.MERCHANT_PAYOUT_WALLET,
+        "treasury_wallet": treasury_wallet,  
+        "facilitator_base_url": settings.FACILITATOR_BASE_URL,  
     }
 
 @app.get("/api/approval-status")

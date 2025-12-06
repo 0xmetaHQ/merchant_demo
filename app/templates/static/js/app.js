@@ -10,9 +10,6 @@ let currentAuthorizationNonce = null;
 // 0xmeta fee configuration
 const OXMETA_FEE_USDC_WEI = 10000; // $0.01 USDC in wei (6 decimals)
 const OXMETA_FEE_USDC = 0.01; // For display
-let OXMETA_TREASURY_WALLET = null;
-
-// Treasury will keep the fee and forward merchant_amount to merchant
 
 // ============================================================================
 // UTILITY FUNCTIONS
@@ -93,12 +90,26 @@ function updatePayButtonText() {
 
 async function loadConfig() {
   try {
+    console.log("📥 Loading configuration from /api/config...");
+
     const response = await fetch("/api/config");
     if (!response.ok) {
-      throw new Error("Failed to fetch config");
+      throw new Error(`Failed to fetch config: ${response.status}`);
     }
+
     CONFIG = await response.json();
     console.log("✅ Config loaded:", CONFIG);
+
+    // Validate required fields
+    if (!CONFIG.facilitator_base_url) {
+      throw new Error("Missing facilitator_base_url in config");
+    }
+    if (!CONFIG.treasury_wallet) {
+      throw new Error("Missing treasury_wallet in config");
+    }
+    if (!CONFIG.merchant_address) {
+      throw new Error("Missing merchant_address in config");
+    }
 
     // Ensure all values are STRINGS
     CONFIG.price_usdc_wei = String(CONFIG.price_usdc_wei);
@@ -108,14 +119,10 @@ async function loadConfig() {
     CONFIG.total_price_usdc = (
       parseFloat(CONFIG.price_usdc) + OXMETA_FEE_USDC
     ).toFixed(2);
-    OXMETA_TREASURY_WALLET = CONFIG.treasury_wallet;
-    BASE_URL = CONFIG.FACILITATOR_BASE_URL;
 
-    if (!OXMETA_TREASURY_WALLET) {
-      throw new Error("Treasury address not configured in backend");
-    }
-
-    console.log("🏦 Treasury address loaded:", OXMETA_TREASURY_WALLET);
+    console.log("🏦 Treasury address:", CONFIG.treasury_wallet);
+    console.log("🏪 Merchant address:", CONFIG.merchant_address);
+    console.log("🔗 Facilitator URL:", CONFIG.facilitator_base_url);
 
     console.log("💰 Payment breakdown:", {
       merchant_amount: CONFIG.price_usdc,
@@ -137,7 +144,10 @@ async function loadConfig() {
     return CONFIG;
   } catch (error) {
     console.error("❌ Failed to load config:", error);
-    updateStatus("❌ Failed to load network configuration", "danger");
+    updateStatus(
+      "❌ Failed to load network configuration: " + error.message,
+      "danger"
+    );
     return null;
   }
 }
@@ -327,7 +337,7 @@ async function createEIP3009Authorization() {
   // Treasury will receive full amount and forward merchant_amount to merchant
   const message = {
     from: walletAddress,
-    to: OXMETA_TREASURY_WALLET,
+    to: CONFIG.treasury_wallet,
     value: CONFIG.total_price_usdc_wei,
     validAfter: validAfter,
     validBefore: validBefore,
@@ -379,7 +389,7 @@ async function createEIP3009Authorization() {
   return {
     authorization: {
       from: walletAddress,
-      to: OXMETA_TREASURY_WALLET,
+      to: CONFIG.treasury_wallet,
       value: CONFIG.total_price_usdc_wei,
       validAfter: String(validAfter),
       validBefore: String(validBefore),
@@ -387,12 +397,6 @@ async function createEIP3009Authorization() {
       token: CONFIG.usdc_address,
     },
     signature: signature,
-    // Include merchant info for facilitator to forward payment
-    merchant_info: {
-      merchant_address: CONFIG.merchant_address,
-      merchant_amount: CONFIG.price_usdc_wei,
-      fee_amount: String(OXMETA_FEE_USDC_WEI),
-    },
   };
 }
 
@@ -430,9 +434,8 @@ async function makePayment() {
   try {
     updateStatus("🔐 Creating payment authorization...", "info");
 
-    // STEP 1: Create EIP-3009 authorization (now to TREASURY)
-    const { authorization, signature, merchant_info } =
-      await createEIP3009Authorization();
+    // STEP 1: Create EIP-3009 authorization (to TREASURY)
+    const { authorization, signature } = await createEIP3009Authorization();
 
     console.log("✅ Authorization created (to treasury)");
 
@@ -442,18 +445,18 @@ async function makePayment() {
     const verifyPayload = {
       transaction_hash: authorization.nonce,
       chain: CONFIG.network,
-      seller_address: CONFIG.merchant_address, // Still merchant (for verification)
-      expected_amount: String(CONFIG.price_usdc_wei), // Merchant amount (not total)
+      seller_address: CONFIG.merchant_address,
+      expected_amount: String(CONFIG.price_usdc_wei),
       expected_token: CONFIG.usdc_address,
       metadata: {
         source: "x402_merchant_demo",
-        resource: "https://merchant-demo-six.vercel.app/photos",
+        resource: window.location.href,
         paymentPayload: {
           x402Version: 1,
           scheme: "exact",
           network: CONFIG.network,
           payload: {
-            authorization: authorization, // Contains treasury as 'to'
+            authorization: authorization,
             signature: signature,
           },
         },
@@ -463,7 +466,6 @@ async function makePayment() {
           fee_amount: String(OXMETA_FEE_USDC_WEI),
           total_authorized: String(CONFIG.total_price_usdc_wei),
         },
-        // ✅ NEW: Include merchant forwarding info
         merchant_forward: {
           merchant_address: CONFIG.merchant_address,
           merchant_amount: CONFIG.price_usdc_wei,
@@ -471,15 +473,21 @@ async function makePayment() {
       },
     };
 
-    console.log("📤 Sending verify request to facilitator...");
+    console.log(
+      "📤 Sending verify request to:",
+      `${CONFIG.facilitator_base_url}/v1/verify`
+    );
 
-    const verifyResponse = await fetch(`${BASE_URL}/v1/verify`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(verifyPayload),
-    });
+    const verifyResponse = await fetch(
+      `${CONFIG.facilitator_base_url}/v1/verify`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(verifyPayload),
+      }
+    );
 
     if (!verifyResponse.ok) {
       const errorData = await verifyResponse.json();
@@ -503,22 +511,28 @@ async function makePayment() {
 
     const settlePayload = {
       verification_id: verificationId,
-      destination_address: CONFIG.merchant_address, // Merchant will receive forwarded amount
+      destination_address: CONFIG.merchant_address,
       metadata: {
         source: "x402_merchant_demo",
-        treasury_forward_required: true, // Signal that treasury must forward to merchant
+        treasury_forward_required: true,
       },
     };
 
-    console.log("📤 Sending settle request to facilitator...");
+    console.log(
+      "📤 Sending settle request to:",
+      `${CONFIG.facilitator_base_url}/v1/settle`
+    );
 
-    const settleResponse = await fetch(`${BASE_URL}/v1/settle`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(settlePayload),
-    });
+    const settleResponse = await fetch(
+      `${CONFIG.facilitator_base_url}/v1/settle`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(settlePayload),
+      }
+    );
 
     if (!settleResponse.ok) {
       const errorData = await settleResponse.json();
@@ -531,8 +545,8 @@ async function makePayment() {
     const settleData = await settleResponse.json();
     console.log("✅ Settlement response:", settleData);
 
-    // STEP 4: Success! Show photos
-    console.log("✅ Payment complete! Fetching photos...");
+    // STEP 4: Success!
+    console.log("✅ Payment complete!");
     console.log("💰 Payment routing:", {
       treasury_received: CONFIG.total_price_usdc_wei,
       fee_kept_by_treasury: OXMETA_FEE_USDC_WEI,
@@ -544,7 +558,7 @@ async function makePayment() {
       "success"
     );
 
-    // Call the success function to fetch and display photos
+    // Call success handler if available
     if (typeof window.showPaymentSuccess === "function") {
       window.showPaymentSuccess();
     }
@@ -563,7 +577,7 @@ async function makePayment() {
 
     if (payBtn) {
       payBtn.disabled = false;
-      payBtn.textContent = `💰 Pay ${CONFIG.total_price_usdc} USDC`;
+      updatePayButtonText();
     }
 
     isPaymentInProgress = false;
@@ -600,7 +614,6 @@ if (isMetaMaskInstalled()) {
 window.addEventListener("load", async () => {
   console.log("🚀 App initialized");
   console.log("🏦 Treasury-first payment flow enabled");
-  console.log(`   Treasury Address: ${OXMETA_TREASURY_WALLET}`);
 
   if (isMetaMaskInstalled()) {
     web3 = new Web3(window.ethereum);

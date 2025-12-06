@@ -19,6 +19,7 @@ class Settings:
     FACILITATOR_BASE_URL = os.getenv(
         "FACILITATOR_BASE_URL"
     )
+    OXMETA_TREASURY_WALLET = os.getenv("OXMETA_TREASURY_WALLET")
     
     # Construct endpoint URLs
     FACILITATOR_VERIFY_URL = f"{FACILITATOR_BASE_URL}/v1/verify"
@@ -116,6 +117,12 @@ class Settings:
             raise ValueError(
                 "MERCHANT_PAYOUT_WALLET must be 42 characters long (0x + 40 hex chars)"
             )
+        
+        if not self.OXMETA_TREASURY_WALLET:  
+            raise ValueError("Missing OXMETA_TREASURY_WALLET environment variable")
+        
+        if not self.FACILITATOR_BASE_URL:  
+            raise ValueError("Missing FACILITATOR_BASE_URL environment variable")
         
         # Validate chain
         if self.CHAIN not in ["base", "base-sepolia"]:
